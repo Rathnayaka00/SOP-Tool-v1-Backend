@@ -14,16 +14,6 @@ async def create_sop(topic: str, description: str):
     topic_embedding = get_embedding(topic)
     description_embedding = get_embedding(description)
     
-    similar_sops = await find_similar_sops(topic_embedding, description_embedding)
-    
-    if similar_sops:
-        similar_sops_dict = {sop_id: score for sop_id, score in similar_sops}
-        return {
-            "similar_sops": similar_sops_dict,
-            "message": "Similar SOPs found",
-            "is_existing": True
-        }
-
     sop_id = str(uuid.uuid4())
 
     sop_data = await generate_sop(topic, description)
