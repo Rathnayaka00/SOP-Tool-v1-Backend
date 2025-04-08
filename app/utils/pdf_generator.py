@@ -317,7 +317,7 @@ def _build_document_story(topic: str, sop_id: str, details: str, styles, company
     sections = [
         # ("1. PURPOSE", "Provide clear guidance for the specified procedure."),
         # ("2. SCOPE", "Define the applicability and boundaries of this procedure."),
-        ("3. PROCEDURE", details),
+        ("PROCEDURE", details),
         # ("4. RESPONSIBILITIES", "Outline roles and expectations for personnel."),
         # ("5. REFERENCES", "List any related documents or sources.")
     ]
