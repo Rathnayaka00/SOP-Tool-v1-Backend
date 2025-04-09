@@ -9,9 +9,16 @@ class SOP(BaseModel):
     details: str
     pdf_url: str
 
+class SOPDocument(BaseModel):
+    sop_id: str
+    topic: str
+    pdf_url: str
+    created_at: datetime
+
+
 class Task(BaseModel):
     id: Optional[str] = None
     sop_id: str
     topic: str
-    created_at: Optional[datetime] = None
+    created_at: datetime
     status: Optional[str] = "pending"

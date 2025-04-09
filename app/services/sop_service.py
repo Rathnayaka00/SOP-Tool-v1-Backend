@@ -4,11 +4,18 @@ from app.utils.openai_embeddings import get_embedding
 from app.utils.similarity_search import find_similar_sops
 from app.database import db
 from app.models.embedding import Embedding
-from app.models.sop import Task
+from app.models.sop import Task, SOPDocument
 import uuid
 import os
 from datetime import datetime
+import pytz
 from typing import List, Optional
+
+# Get Sri Lankan timezone
+sri_lanka_tz = pytz.timezone('Asia/Colombo')
+
+def get_sri_lankan_time():
+    return datetime.now(sri_lanka_tz)
 
 async def create_sop(topic: str, description: str):
     topic_embedding = get_embedding(topic)
@@ -23,6 +30,10 @@ async def create_sop(topic: str, description: str):
 
     pdf_path = create_pdf(sop_id, topic, sop_data["details"])
 
+    # Create SOP document with Sri Lankan timezone
+    current_time = get_sri_lankan_time()
+    
+    # Store in sops collection
     await db.sops.insert_one({
         "sop_id": sop_id,
         "topic": topic,
@@ -30,6 +41,15 @@ async def create_sop(topic: str, description: str):
         "details": sop_data["details"],
         "pdf_url": pdf_path
     })
+
+    # Store in new sop_documents collection
+    sop_document = SOPDocument(
+        sop_id=sop_id,
+        topic=topic,
+        pdf_url=pdf_path,
+        created_at=current_time
+    )
+    await db.sop_documents.insert_one(sop_document.dict())
 
     await db.summaries.insert_one({
         "topic_id": sop_id,
@@ -66,6 +86,10 @@ async def create_sop_direct(topic: str, description: str):
 
     pdf_path = create_pdf(sop_id, topic, sop_data["details"])
 
+    # Create SOP document with Sri Lankan timezone
+    current_time = get_sri_lankan_time()
+    
+    # Store in sops collection
     await db.sops.insert_one({
         "sop_id": sop_id,
         "topic": topic,
@@ -73,6 +97,15 @@ async def create_sop_direct(topic: str, description: str):
         "details": sop_data["details"],
         "pdf_url": pdf_path
     })
+
+    # Store in new sop_documents collection
+    sop_document = SOPDocument(
+        sop_id=sop_id,
+        topic=topic,
+        pdf_url=pdf_path,
+        created_at=current_time
+    )
+    await db.sop_documents.insert_one(sop_document.dict())
 
     await db.summaries.insert_one({
         "topic_id": sop_id,
