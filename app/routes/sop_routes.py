@@ -7,7 +7,7 @@ from app.services.sop_service import (
 )
 from app.utils.openai_embeddings import get_embedding
 from app.utils.similarity_search import find_similar_sops
-from app.models.sop import Task
+from app.models.sop import Task, EditedSOPDocument
 from app.database import db
 from pydantic import BaseModel
 import os
@@ -44,6 +44,11 @@ class TaskCreateRequest(BaseModel):
 
 class TaskStatusUpdateRequest(BaseModel):
     status: str
+
+class EditedSOPResponse(BaseModel):
+    old_sop_id: str
+    new_sop_id: str
+    created_at: str
 
 @router.post("/generate_sop")
 async def generate_sop_endpoint(sop_request: SOPRequest):
@@ -177,5 +182,47 @@ async def get_sop_comparison(sop_id: str):
             similarity_percentage=similarity_percentage,
             message="Comparison calculated successfully"
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/edited_sop/{old_sop_id}/pdf")
+async def get_edited_sop_pdf(old_sop_id: str):
+    try:
+        # Find the edited SOP document using old_sop_id
+        edited_doc = await db.edited_sop_documents.find_one({"old_sop_id": old_sop_id})
+        if not edited_doc:
+            raise HTTPException(status_code=404, detail="No edited version found for this SOP")
+        
+        # Get the new SOP's PDF using the new_sop_id
+        new_sop_id = edited_doc["new_sop_id"]
+        pdf_path = await get_sop_pdf(new_sop_id)
+        
+        if not os.path.exists(pdf_path):
+            raise HTTPException(status_code=404, detail="Edited SOP PDF not found")
+        
+        headers = {
+            "Content-Disposition": f"inline; filename=edited_sop_{old_sop_id}.pdf"
+        }
+        return FileResponse(
+            pdf_path, 
+            media_type="application/pdf", 
+            filename=f"edited_sop_{old_sop_id}.pdf",
+            headers=headers
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/edited_sop_info/{old_sop_id}")
+async def get_edited_sop_info(old_sop_id: str):
+    try:
+        edited_doc = await db.edited_sop_documents.find_one({"old_sop_id": old_sop_id})
+        if not edited_doc:
+            raise HTTPException(status_code=404, detail="No edited version found for this SOP")
+        
+        return {
+            "old_sop_id": edited_doc["old_sop_id"],
+            "new_sop_id": edited_doc["new_sop_id"],
+            "created_at": edited_doc.get("created_at", None)
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
