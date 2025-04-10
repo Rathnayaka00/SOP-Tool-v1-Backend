@@ -15,6 +15,13 @@ class SOPDocument(BaseModel):
     pdf_url: str
     created_at: datetime
 
+class EditedSOPDocument(BaseModel):
+    new_sop_id: str
+    old_sop_id: str
+    topic: str
+    details: str
+    version: int
+    created_at: datetime
 
 class Task(BaseModel):
     id: Optional[str] = None

@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from app.services.sop_service import (
     create_sop, get_sop_pdf, get_sop_summary, create_sop_direct,
-    create_task, get_task, get_all_tasks, update_task_status
+    create_task, get_task, get_all_tasks, update_task_status,
+    edit_existing_sop
 )
 from app.utils.openai_embeddings import get_embedding
 from app.utils.similarity_search import find_similar_sops
@@ -16,6 +17,10 @@ router = APIRouter()
 class SOPRequest(BaseModel):
     topic: str
     description: str
+
+class EditSOPRequest(BaseModel):
+    old_sop_id: str
+    user_suggestion: str
 
 class SimilarityResponse(BaseModel):
     sop_id: str
@@ -125,3 +130,11 @@ async def update_task_status_endpoint(task_id: str, status_request: TaskStatusUp
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
+@router.post("/edit_sop")
+async def edit_sop_endpoint(edit_request: EditSOPRequest):
+    try:
+        response = await edit_existing_sop(edit_request.old_sop_id, edit_request.user_suggestion)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
