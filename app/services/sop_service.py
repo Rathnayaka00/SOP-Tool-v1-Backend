@@ -10,9 +10,17 @@ import os
 from datetime import datetime
 import pytz
 from typing import List, Optional
+import difflib
 
 # Get Sri Lankan timezone
 sri_lanka_tz = pytz.timezone('Asia/Colombo')
+
+# Function to calculate similarity percentage between two texts
+def calculate_similarity_percentage(text1: str, text2: str) -> int:
+    # Use difflib to calculate similarity ratio
+    similarity = difflib.SequenceMatcher(None, text1, text2).ratio()
+    # Convert to percentage (0-100)
+    return int(similarity * 100)
 
 async def create_sop(topic: str, description: str):
     topic_embedding = get_embedding(topic)
@@ -44,7 +52,8 @@ async def create_sop(topic: str, description: str):
         sop_id=sop_id,
         topic=topic,
         pdf_url=pdf_path,
-        created_at=current_time
+        created_at=current_time,
+        percentage=0  # Initialize percentage to 0
     )
     await db.sop_documents.insert_one(sop_document.dict())
 
@@ -100,7 +109,8 @@ async def create_sop_direct(topic: str, description: str):
         sop_id=sop_id,
         topic=topic,
         pdf_url=pdf_path,
-        created_at=current_time
+        created_at=current_time,
+        percentage=0  # Initialize percentage to 0
     )
     await db.sop_documents.insert_one(sop_document.dict())
 
@@ -126,7 +136,6 @@ async def create_sop_direct(topic: str, description: str):
         "is_existing": False
     }
 
-
 async def get_sop_pdf(sop_id: str):
     sop = await db.sops.find_one({"sop_id": sop_id})
     if not sop or "pdf_url" not in sop:
@@ -146,12 +155,14 @@ async def get_sop_summary(sop_id: str):
     return summary_doc["summary"]
 
 async def create_task(sop_id: str, topic: str) -> Task:
+    # Set percentage to 0 for new tasks
     task = Task(
         id=str(uuid.uuid4()),
         sop_id=sop_id,
         topic=topic,
-        created_at=datetime.utcnow(),
-        status="pending"
+        created_at=datetime.now(sri_lanka_tz),
+        status="pending",
+        percentage=0
     )
     await db.tasks.insert_one(task.dict())
     return task
@@ -169,13 +180,60 @@ async def get_all_tasks() -> List[Task]:
     return tasks
 
 async def update_task_status(task_id: str, status: str) -> Optional[Task]:
+    # Get the current task
+    task = await get_task(task_id)
+    if not task:
+        return None
+    
+    # Calculate percentage based on status
+    percentage = 0
+    if status == "completed":
+        # Check if the SOP has been edited
+        edited_doc = await db.edited_sop_documents.find_one({"old_sop_id": task.sop_id})
+        if not edited_doc:
+            # If not edited, set percentage to 100
+            percentage = 100
+        else:
+            # If edited, calculate comparison percentage
+            # Get the old SOP details
+            old_sop = await db.sops.find_one({"sop_id": task.sop_id})
+            if not old_sop:
+                percentage = 50  # Default if old SOP not found
+            else:
+                # Get the new SOP details
+                new_sop = await db.sops.find_one({"sop_id": edited_doc["new_sop_id"]})
+                if not new_sop:
+                    percentage = 50  # Default if new SOP not found
+                else:
+                    # Calculate similarity percentage
+                    percentage = calculate_similarity_percentage(old_sop["details"], new_sop["details"])
+                    
+                    # Update the percentage in sop_documents collection for both old and new SOPs
+                    await db.sop_documents.update_one(
+                        {"sop_id": task.sop_id},
+                        {"$set": {"percentage": percentage}}
+                    )
+                    await db.sop_documents.update_one(
+                        {"sop_id": edited_doc["new_sop_id"]},
+                        {"$set": {"percentage": 100}}
+                    )
+    
+    # Update the task with new status and percentage
     result = await db.tasks.find_one_and_update(
         {"id": task_id},
-        {"$set": {"status": status}},
+        {"$set": {"status": status, "percentage": percentage}},
         return_document=True
     )
+    
     if result:
+        # Also update the percentage in sop_documents collection if not already updated
+        if status != "completed" or not edited_doc:
+            await db.sop_documents.update_one(
+                {"sop_id": task.sop_id},
+                {"$set": {"percentage": percentage}}
+            )
         return Task(**result)
+    
     return None
 
 async def edit_existing_sop(old_sop_id: str, user_suggestion: str):
@@ -208,6 +266,9 @@ async def edit_existing_sop(old_sop_id: str, user_suggestion: str):
     # Get current time in Sri Lankan timezone
     current_time = datetime.now(sri_lanka_tz)
     
+    # Calculate similarity percentage between old and new SOP details
+    similarity_percentage = calculate_similarity_percentage(existing_sop["details"], sop_data["details"])
+    
     # Store in edited_sop_documents collection
     edited_sop_doc = EditedSOPDocument(
         new_sop_id=new_sop_id,
@@ -228,14 +289,21 @@ async def edit_existing_sop(old_sop_id: str, user_suggestion: str):
         "pdf_url": pdf_path
     })
     
-    # Store in sop_documents collection
+    # Store in sop_documents collection with percentage 100 (since it's the new corrected version)
     sop_document = SOPDocument(
         sop_id=new_sop_id,
         topic=existing_sop["topic"],
         pdf_url=pdf_path,
-        created_at=current_time
+        created_at=current_time,
+        percentage=100  # Set percentage to 100 for the new corrected SOP
     )
     await db.sop_documents.insert_one(sop_document.dict())
+    
+    # Update the percentage of the old SOP document to the similarity percentage
+    await db.sop_documents.update_one(
+        {"sop_id": old_sop_id},
+        {"$set": {"percentage": similarity_percentage}}
+    )
     
     # Store summary
     await db.summaries.insert_one({
@@ -256,10 +324,17 @@ async def edit_existing_sop(old_sop_id: str, user_suggestion: str):
     
     await db.embeddings.insert_one(embedding_doc.dict())
     
+    # Update any tasks associated with the old SOP
+    await db.tasks.update_many(
+        {"sop_id": old_sop_id, "status": "completed"},
+        {"$set": {"percentage": similarity_percentage}}
+    )
+    
     return {
         "new_sop_id": new_sop_id,
         "old_sop_id": old_sop_id,
         "version": version,
         "message": "SOP edited successfully",
-        "pdf_url": pdf_path
+        "pdf_url": pdf_path,
+        "similarity_percentage": similarity_percentage
     }

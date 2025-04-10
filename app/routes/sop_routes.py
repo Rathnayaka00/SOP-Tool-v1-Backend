@@ -3,14 +3,15 @@ from fastapi.responses import FileResponse
 from app.services.sop_service import (
     create_sop, get_sop_pdf, get_sop_summary, create_sop_direct,
     create_task, get_task, get_all_tasks, update_task_status,
-    edit_existing_sop
+    edit_existing_sop, calculate_similarity_percentage
 )
 from app.utils.openai_embeddings import get_embedding
 from app.utils.similarity_search import find_similar_sops
 from app.models.sop import Task
+from app.database import db
 from pydantic import BaseModel
 import os
-from typing import Optional
+from typing import Optional, List
 
 router = APIRouter()
 
@@ -25,7 +26,13 @@ class EditSOPRequest(BaseModel):
 class SimilarityResponse(BaseModel):
     sop_id: str
     similarity_score: float
-    is_existing: bool
+    similar_sops: List[dict]
+
+class ComparisonResponse(BaseModel):
+    old_sop_id: str
+    new_sop_id: Optional[str] = None
+    similarity_percentage: int
+    message: str
 
 class SimilarityRequest(BaseModel):
     topic: str
@@ -136,5 +143,39 @@ async def edit_sop_endpoint(edit_request: EditSOPRequest):
     try:
         response = await edit_existing_sop(edit_request.old_sop_id, edit_request.user_suggestion)
         return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/sop/{sop_id}/comparison", response_model=ComparisonResponse)
+async def get_sop_comparison(sop_id: str):
+    try:
+        # Check if the SOP has been edited
+        edited_doc = await db.edited_sop_documents.find_one({"old_sop_id": sop_id})
+        if not edited_doc:
+            return ComparisonResponse(
+                old_sop_id=sop_id,
+                similarity_percentage=100,
+                message="SOP has not been edited"
+            )
+        
+        # Get the old SOP details
+        old_sop = await db.sops.find_one({"sop_id": sop_id})
+        if not old_sop:
+            raise HTTPException(status_code=404, detail="Original SOP not found")
+        
+        # Get the new SOP details
+        new_sop = await db.sops.find_one({"sop_id": edited_doc["new_sop_id"]})
+        if not new_sop:
+            raise HTTPException(status_code=404, detail="Edited SOP not found")
+        
+        # Calculate similarity percentage
+        similarity_percentage = calculate_similarity_percentage(old_sop["details"], new_sop["details"])
+        
+        return ComparisonResponse(
+            old_sop_id=sop_id,
+            new_sop_id=edited_doc["new_sop_id"],
+            similarity_percentage=similarity_percentage,
+            message="Comparison calculated successfully"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

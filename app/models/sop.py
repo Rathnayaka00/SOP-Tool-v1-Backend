@@ -14,6 +14,7 @@ class SOPDocument(BaseModel):
     topic: str
     pdf_url: str
     created_at: datetime
+    percentage: Optional[int] = 0
 
 class EditedSOPDocument(BaseModel):
     new_sop_id: str
@@ -27,5 +28,6 @@ class Task(BaseModel):
     id: Optional[str] = None
     sop_id: str
     topic: str
-    created_at: datetime
+    created_at: Optional[datetime] = None
     status: Optional[str] = "pending"
+    percentage: Optional[int] = 0
