@@ -226,3 +226,29 @@ async def get_edited_sop_info(old_sop_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/sop/{sop_id}/success_rate")
+async def get_success_rate_info(sop_id: str):
+    try:
+        # Get percentage from sop_documents
+        sop_doc = await db.sop_documents.find_one({"sop_id": sop_id})
+        if not sop_doc:
+            raise HTTPException(status_code=404, detail="SOP not found")
+
+        success_rate = sop_doc.get("percentage")
+
+        # Get version from edited_sop_documents where new_sop_id == sop_id
+        edited_doc = await db.edited_sop_documents.find_one({"new_sop_id": sop_id})
+        version = edited_doc.get("version") if edited_doc else None
+
+        return {
+            "sop_id": sop_id,
+            "percentage": success_rate,
+            "version": version,
+            "message": "Success rate and version retrieved successfully."
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
