@@ -2,16 +2,14 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from app.services.sop_service import (
     create_sop, get_sop_pdf, get_sop_summary, create_sop_direct,
-    create_task, get_task, get_all_tasks, update_task_status,
-    edit_existing_sop, calculate_similarity_percentage
+    create_task, get_task, get_all_tasks, update_task_status
 )
 from app.utils.openai_embeddings import get_embedding
 from app.utils.similarity_search import find_similar_sops
-from app.models.sop import Task, EditedSOPDocument
-from app.database import db
+from app.models.sop import Task
 from pydantic import BaseModel
 import os
-from typing import Optional, List
+from typing import Optional
 
 router = APIRouter()
 
@@ -19,20 +17,10 @@ class SOPRequest(BaseModel):
     topic: str
     description: str
 
-class EditSOPRequest(BaseModel):
-    old_sop_id: str
-    user_suggestion: str
-
 class SimilarityResponse(BaseModel):
     sop_id: str
     similarity_score: float
-    similar_sops: List[dict]
-
-class ComparisonResponse(BaseModel):
-    old_sop_id: str
-    new_sop_id: Optional[str] = None
-    similarity_percentage: int
-    message: str
+    is_existing: bool
 
 class SimilarityRequest(BaseModel):
     topic: str
@@ -44,11 +32,6 @@ class TaskCreateRequest(BaseModel):
 
 class TaskStatusUpdateRequest(BaseModel):
     status: str
-
-class EditedSOPResponse(BaseModel):
-    old_sop_id: str
-    new_sop_id: str
-    created_at: str
 
 @router.post("/generate_sop")
 async def generate_sop_endpoint(sop_request: SOPRequest):
@@ -142,113 +125,3 @@ async def update_task_status_endpoint(task_id: str, status_request: TaskStatusUp
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
-
-@router.post("/edit_sop")
-async def edit_sop_endpoint(edit_request: EditSOPRequest):
-    try:
-        response = await edit_existing_sop(edit_request.old_sop_id, edit_request.user_suggestion)
-        return response
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/sop/{sop_id}/comparison", response_model=ComparisonResponse)
-async def get_sop_comparison(sop_id: str):
-    try:
-        # Check if the SOP has been edited
-        edited_doc = await db.edited_sop_documents.find_one({"old_sop_id": sop_id})
-        if not edited_doc:
-            return ComparisonResponse(
-                old_sop_id=sop_id,
-                similarity_percentage=100,
-                message="SOP has not been edited"
-            )
-        
-        # Get the old SOP details
-        old_sop = await db.sops.find_one({"sop_id": sop_id})
-        if not old_sop:
-            raise HTTPException(status_code=404, detail="Original SOP not found")
-        
-        # Get the new SOP details
-        new_sop = await db.sops.find_one({"sop_id": edited_doc["new_sop_id"]})
-        if not new_sop:
-            raise HTTPException(status_code=404, detail="Edited SOP not found")
-        
-        # Calculate similarity percentage
-        similarity_percentage = calculate_similarity_percentage(old_sop["details"], new_sop["details"])
-        
-        return ComparisonResponse(
-            old_sop_id=sop_id,
-            new_sop_id=edited_doc["new_sop_id"],
-            similarity_percentage=similarity_percentage,
-            message="Comparison calculated successfully"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/edited_sop/{old_sop_id}/pdf")
-async def get_edited_sop_pdf(old_sop_id: str):
-    try:
-        # Find the edited SOP document using old_sop_id
-        edited_doc = await db.edited_sop_documents.find_one({"old_sop_id": old_sop_id})
-        if not edited_doc:
-            raise HTTPException(status_code=404, detail="No edited version found for this SOP")
-        
-        # Get the new SOP's PDF using the new_sop_id
-        new_sop_id = edited_doc["new_sop_id"]
-        pdf_path = await get_sop_pdf(new_sop_id)
-        
-        if not os.path.exists(pdf_path):
-            raise HTTPException(status_code=404, detail="Edited SOP PDF not found")
-        
-        headers = {
-            "Content-Disposition": f"inline; filename=edited_sop_{old_sop_id}.pdf"
-        }
-        return FileResponse(
-            pdf_path, 
-            media_type="application/pdf", 
-            filename=f"edited_sop_{old_sop_id}.pdf",
-            headers=headers
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/edited_sop_info/{old_sop_id}")
-async def get_edited_sop_info(old_sop_id: str):
-    try:
-        edited_doc = await db.edited_sop_documents.find_one({"old_sop_id": old_sop_id})
-        if not edited_doc:
-            raise HTTPException(status_code=404, detail="No edited version found for this SOP")
-        
-        return {
-            "old_sop_id": edited_doc["old_sop_id"],
-            "new_sop_id": edited_doc["new_sop_id"],
-            "created_at": edited_doc.get("created_at", None)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
-@router.get("/sop/{sop_id}/success_rate")
-async def get_success_rate_info(sop_id: str):
-    try:
-        # Get percentage from sop_documents
-        sop_doc = await db.sop_documents.find_one({"sop_id": sop_id})
-        if not sop_doc:
-            raise HTTPException(status_code=404, detail="SOP not found")
-
-        success_rate = sop_doc.get("percentage")
-
-        # Get version from edited_sop_documents where new_sop_id == sop_id
-        edited_doc = await db.edited_sop_documents.find_one({"new_sop_id": sop_id})
-        version = edited_doc.get("version") if edited_doc else None
-
-        return {
-            "sop_id": sop_id,
-            "percentage": success_rate,
-            "version": version,
-            "message": "Success rate and version retrieved successfully."
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
