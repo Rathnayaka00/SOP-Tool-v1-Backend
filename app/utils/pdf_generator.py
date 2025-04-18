@@ -27,7 +27,6 @@ def create_pdf(sop_id: str, topic: str, details: str, company_name="Your Company
 
     styles = _create_custom_stylesheet()
     
-    # Store company name for footer/header
     doc._company_name = company_name
     doc._sop_id = sop_id
     doc._topic = topic
@@ -47,7 +46,6 @@ def create_pdf(sop_id: str, topic: str, details: str, company_name="Your Company
 def _create_custom_stylesheet() -> StyleSheet1:
     styles = getSampleStyleSheet()
     
-    # Main title style
     styles.add(ParagraphStyle(
         'SOPTitle',
         parent=styles['Heading1'],
@@ -59,7 +57,6 @@ def _create_custom_stylesheet() -> StyleSheet1:
         spaceBefore=6
     ))
     
-    # Document ID style
     styles.add(ParagraphStyle(
         'SOPDocID',
         parent=styles['Normal'],
@@ -70,7 +67,6 @@ def _create_custom_stylesheet() -> StyleSheet1:
         spaceAfter=20
     ))
 
-    # Main section headings
     styles.add(ParagraphStyle(
         'SOPHeading',
         parent=styles['Heading2'],
@@ -86,7 +82,6 @@ def _create_custom_stylesheet() -> StyleSheet1:
         borderColor=colors.darkblue
     ))
 
-    # Normal text style
     styles.add(ParagraphStyle(
         'SOPNormal',
         parent=styles['Normal'],
@@ -97,7 +92,6 @@ def _create_custom_stylesheet() -> StyleSheet1:
         leading=14
     ))
     
-    # Markdown heading styles
     styles.add(ParagraphStyle(
         'MarkdownH1',
         parent=styles['Heading1'],
@@ -136,7 +130,68 @@ def _create_custom_stylesheet() -> StyleSheet1:
         leftIndent=10
     ))
     
-    # List item styles
+    # Add styles for heading levels 4 and 5
+    styles.add(ParagraphStyle(
+        'MarkdownH4',
+        parent=styles['Heading3'],
+        fontSize=10,
+        fontName='Helvetica-Bold',
+        textColor=colors.darkblue,
+        spaceBefore=6,
+        spaceAfter=3,
+        keepWithNext=True,
+        leftIndent=15
+    ))
+
+    styles.add(ParagraphStyle(
+        'MarkdownH5',
+        parent=styles['Heading3'],
+        fontSize=9,
+        fontName='Helvetica-Bold',
+        textColor=colors.darkblue,
+        spaceBefore=4,
+        spaceAfter=2,
+        keepWithNext=True,
+        leftIndent=20
+    ))
+    
+    # Primary level numbered list (1., 2., 3., etc.) - Adjusted with more spacing
+    styles.add(ParagraphStyle(
+        'NumberedLevel1',
+        parent=styles['Normal'],
+        fontSize=10,
+        fontName='Helvetica-Bold',  # Bold for level 1
+        leftIndent=20,              # Increased indent
+        firstLineIndent=-20,        # Adjusted for proper hanging indent
+        spaceBefore=18,              # Increased spacing
+        spaceAfter=6,
+        leading=14
+    ))
+    
+    # Secondary level numbered list (1.1., 1.2., etc.) - Adjusted with more spacing and indent
+    styles.add(ParagraphStyle(
+        'NumberedLevel2',
+        parent=styles['Normal'],
+        fontSize=10,
+        leftIndent=50,              # Increased indent for level 2
+        firstLineIndent=-30,        # Adjusted for proper hanging indent
+        spaceBefore=6,
+        spaceAfter=4,
+        leading=14
+    ))
+    
+    # Third level numbered list (1.1.1., 1.1.2., etc.) - Adjusted with more spacing and indent
+    styles.add(ParagraphStyle(
+        'NumberedLevel3',
+        parent=styles['Normal'],
+        fontSize=10,
+        leftIndent=80,              # Increased indent for level 3
+        firstLineIndent=-40,        # Adjusted for proper hanging indent
+        spaceBefore=4,
+        spaceAfter=4,
+        leading=14
+    ))
+    
     styles.add(ParagraphStyle(
         'BulletPoint',
         parent=styles['Normal'],
@@ -148,18 +203,6 @@ def _create_custom_stylesheet() -> StyleSheet1:
         leading=14
     ))
     
-    styles.add(ParagraphStyle(
-        'NumberedPoint',
-        parent=styles['Normal'],
-        fontSize=10,
-        leftIndent=25,
-        firstLineIndent=-15,
-        spaceBefore=2,
-        spaceAfter=2,
-        leading=14
-    ))
-    
-    # Table styles
     styles.add(ParagraphStyle(
         'TableHeader',
         parent=styles['Normal'],
@@ -179,7 +222,7 @@ def _create_custom_stylesheet() -> StyleSheet1:
     return styles
 
 def _format_markdown_content(content: str, styles) -> list:
-    """Format markdown content into proper ReportLab elements"""
+    """Format markdown content into proper ReportLab elements with multi-level numbering"""
     story = []
     
     # Split the content by lines
@@ -189,35 +232,71 @@ def _format_markdown_content(content: str, styles) -> list:
     while i < len(lines):
         line = lines[i].strip()
         
-        # Handle headings
-        if line.startswith('# '):
-            # H1 heading
-            heading_text = line[2:].strip()
-            story.append(Paragraph(heading_text, styles['MarkdownH1']))
-        elif line.startswith('## '):
-            # H2 heading
-            heading_text = line[3:].strip()
-            story.append(Paragraph(heading_text, styles['MarkdownH2']))
-        elif line.startswith('### '):
-            # H3 heading
-            heading_text = line[4:].strip()
-            story.append(Paragraph(heading_text, styles['MarkdownH3']))
-        # Handle numbered lists
-        elif re.match(r'^\d+\.\s', line):
+        # Handle headings with multiple hash symbols (###, ####, #####)
+        hash_match = re.match(r'^(#{1,5})\s+(.*?)$', line)
+        if hash_match:
+            # Count the number of hash symbols to determine heading level
+            num_hashes = len(hash_match.group(1))
+            heading_text = hash_match.group(2).strip()
+            
+            # Choose style based on heading level
+            if num_hashes == 1:
+                story.append(Paragraph(heading_text, styles['MarkdownH1']))
+            elif num_hashes == 2:
+                story.append(Paragraph(heading_text, styles['MarkdownH2']))
+            elif num_hashes == 3:
+                story.append(Paragraph(heading_text, styles['MarkdownH3']))
+            elif num_hashes == 4:
+                story.append(Paragraph(heading_text, styles['MarkdownH4']))
+            elif num_hashes == 5:
+                story.append(Paragraph(heading_text, styles['MarkdownH5']))
+        # Handle numbered lists with up to 3 levels (e.g., 1., 1.1., 1.1.1.)
+        elif re.match(r'^\d+\.\s', line):  # Main level (1., 2., etc.)
             # Extract number and text
-            match = re.match(r'^(\d+)\.\s(.*)$', line)
+            match = re.match(r'^(\d+)\.(.*)$', line)
             if match:
                 number = match.group(1)
-                list_text = match.group(2)
+                list_text = match.group(2).strip()
                 
                 # Process bold text within list items
                 list_text = _process_bold_text(list_text)
                 
-                # Create a numbered list item
-                story.append(Paragraph(f"{number}. {list_text}", styles['NumberedPoint']))
+                # Create a primary level numbered list item with proper tab spacing
+                story.append(Paragraph(f"{number}. {list_text}", styles['NumberedLevel1']))
+        elif re.match(r'^\d+\.\d+\.\s', line):  # Second level (1.1., 1.2., etc.)
+            # Extract number and text
+            match = re.match(r'^(\d+\.\d+)\.(.*)$', line)
+            if match:
+                number = match.group(1)
+                list_text = match.group(2).strip()
+                
+                # Process bold text within list items
+                list_text = _process_bold_text(list_text)
+                
+                # Create a secondary level numbered list item with proper tab spacing
+                story.append(Paragraph(f"{number}. {list_text}", styles['NumberedLevel2']))
+        elif re.match(r'^\d+\.\d+\.\d+\.\s', line):  # Third level (1.1.1., 1.1.2., etc.)
+            # Extract number and text
+            match = re.match(r'^(\d+\.\d+\.\d+)\.(.*)$', line)
+            if match:
+                number = match.group(1)
+                list_text = match.group(2).strip()
+                
+                # Process bold text within list items
+                list_text = _process_bold_text(list_text)
+                
+                # Create a tertiary level numbered list item with proper tab spacing
+                story.append(Paragraph(f"{number}. {list_text}", styles['NumberedLevel3']))
         # Handle dash or bullet lists
-        elif line.startswith('- ') or line.startswith('* '):
-            list_text = line[2:].strip()
+        elif line.startswith('- ') or line.startswith('* ') or line.startswith('• '):
+            # Remove the bullet character and any leading space
+            if line.startswith('- '):
+                list_text = line[2:].strip()
+            elif line.startswith('* '):
+                list_text = line[2:].strip()
+            elif line.startswith('• '):
+                list_text = line[2:].strip()
+                
             list_text = _process_bold_text(list_text)
             story.append(Paragraph(f"• {list_text}", styles['BulletPoint']))
         # Handle bold text
@@ -230,8 +309,8 @@ def _format_markdown_content(content: str, styles) -> list:
             paragraph_lines = [line]
             j = i + 1
             while j < len(lines) and lines[j].strip() and not (
-                lines[j].strip().startswith(('#', '- ', '* ')) or 
-                re.match(r'^\d+\.\s', lines[j].strip())
+                lines[j].strip().startswith(('#', '- ', '* ', '• ')) or 
+                re.match(r'^\d+(\.\d+)*\.', lines[j].strip())
             ):
                 paragraph_lines.append(lines[j].strip())
                 j += 1
@@ -266,7 +345,6 @@ def _build_document_story(topic: str, sop_id: str, details: str, styles, company
         ["Document Title:", topic],
         ["Document ID:", sop_id],
         ["Effective Date:", datetime.now().strftime("%Y-%m-%d")],
-        ["Version:", "1.0"],
         ["Status:", "Official"]
     ]
     
@@ -315,11 +393,7 @@ def _build_document_story(topic: str, sop_id: str, details: str, styles, company
 
     # Add sections with better styling
     sections = [
-        # ("1. PURPOSE", "Provide clear guidance for the specified procedure."),
-        # ("2. SCOPE", "Define the applicability and boundaries of this procedure."),
         ("PROCEDURE", details),
-        # ("4. RESPONSIBILITIES", "Outline roles and expectations for personnel."),
-        # ("5. REFERENCES", "List any related documents or sources.")
     ]
 
     for title, content in sections:

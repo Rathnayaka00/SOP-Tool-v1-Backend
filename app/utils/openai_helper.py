@@ -10,8 +10,23 @@ async def generate_sop(topic: str, description: str):
     response = openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "Generate a well-structured and clear SOP with step by step based on the given topic and description."},
-            {"role": "user", "content": f"Topic: {topic}\nDescription: {description}"}
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert SOP writer. Generate a detailed, structured, and professional Standard Operating Procedure (SOP) "
+                    "based on the given topic and description. Use hierarchical numbering format for clarity and organization, such as:\n\n"
+                    "1. Main Section\n"
+                    "   1.1 Subsection\n"
+                    "       1.1.1 Detailed Step\n"
+                    "2. Next Main Section\n"
+                    "   2.1 Subsection\n\n"
+                    "Ensure the SOP is logically ordered, easy to follow, and practical for real-world execution."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"Topic: {topic}\nDescription: {description}"
+            }
         ],
         functions=[
             {
@@ -19,7 +34,7 @@ async def generate_sop(topic: str, description: str):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "details": {"type": "string", "description": "Detailed structured SOP."},
+                        "details": {"type": "string", "description": "Detailed structured SOP using hierarchical numbering."},
                         "summary": {"type": "string", "description": "Brief summary of SOP."}
                     }
                 }
